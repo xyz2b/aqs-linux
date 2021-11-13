@@ -66,6 +66,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
     pthread_cond_wait(thread->_cond, thread->_startThread_lock);
     pthread_mutex_unlock(thread->_startThread_lock);
 
+    thread->_state = RUNNABLE;
     INFO_PRINT("[%s] 被唤醒运行", thread->_name.c_str());
     // 抢锁
     enter(thread);
@@ -161,10 +162,14 @@ void ObjectMonitor::exit(JavaThread *thread) {
         // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
         if (head_thread->_state == MONITOR_WAIT) {
             INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
-            pthread_cond_signal(head_thread->_cond);
+            // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
+            // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
+            // 所以这里循环唤醒，直到thread的状态改变
+            while (head_thread->_state == MONITOR_WAIT) {
+                pthread_cond_signal(head_thread->_cond);
+                sleep(1);
+            }
             break;
         }
     }
 }
-
-
