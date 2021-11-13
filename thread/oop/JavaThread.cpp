@@ -18,6 +18,7 @@ void* thread_do(void* arg) {
     pthread_cond_wait(Self->_cond, Self->_startThread_lock);
     pthread_mutex_unlock(Self->_startThread_lock);
 
+    // 开始执行业务逻辑，包括加锁的逻辑
     Self->_state = RUNNABLE;
 
     objectMonitor.enter(Self);
@@ -26,9 +27,11 @@ void* thread_do(void* arg) {
         val++;
     }
 
+    // 业务逻辑执行完成，不包括解锁的逻辑
     Self->_state = FINISHED;
     objectMonitor.exit(Self);
 
+    // 业务逻辑执行完成，包括解锁的逻辑
     Self->_state = ZOMBIE;
 
     return 0;

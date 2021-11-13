@@ -80,11 +80,13 @@ void ObjectMonitor::enter(JavaThread *thread) {
 
     // 阻塞等待唤醒，当持有锁的线程，释放锁时唤醒，让队列中的线程进行抢锁
     pthread_mutex_lock(thread->_startThread_lock);
+    // 线程处于没有抢到锁阻塞的状态
     thread->_state = MONITOR_WAIT;
     INFO_PRINT("[%s] 线程阻塞，等待唤醒", thread->_name.c_str());
     pthread_cond_wait(thread->_cond, thread->_startThread_lock);
     pthread_mutex_unlock(thread->_startThread_lock);
 
+    // 线程被唤醒运行的状态，进行抢锁
     thread->_state = RUNNABLE;
     INFO_PRINT("[%s] 被唤醒运行", thread->_name.c_str());
     // 抢锁
@@ -108,9 +110,12 @@ void ObjectMonitor::exit(JavaThread *thread) {
 
     // 释放锁，并唤醒队列中的一个线程，根据是公平锁或非公平锁选择下一个抢锁的线程
 
-    // 最后一个等待线程还没有成功入队，但是该线程执行完了，之后没有人唤醒最后一个等待线程了
-    // 如何判定所有线程都执行完毕了？
-    // 自旋，判断所保存的所有线程状态，都执行完毕之后退出，没有执行完毕就等待
+
+    // 1.如何判定所有线程都执行完毕了？
+    // 自旋，判断所保存的所有线程状态，都执行完毕之后退出。有没有执行完毕的线程就自旋等待
+    // 2.最后一个等待线程还没有成功入队，但是倒数第二个等待线程执行完了，之后没有人唤醒最后一个等待线程了
+    // 自旋，如果当倒数第二个线程退出时，最后一个等待线程成功入队，即获取队列首部时，不为NULL，就退出自旋。从队列中取出最后一个等待线程进行唤醒。
+    //      如果最后一个等待线程还没有成功入队，即获取队列首部时，为NULL，就自旋等待
     while (true) {
         ObjectWaiter* next = _waiterSet;
         bool all_done = true;
@@ -164,6 +169,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
             int unrun = 0;
             for (int i = 0; i < _waiters; i++) {
                 JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
+                // 线程状态小于等于MONITOR_WAIT时，即代表线程未被唤醒
                 if (next_thread->_state <= MONITOR_WAIT) {
                     unrun++;
                 }
