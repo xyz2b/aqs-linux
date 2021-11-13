@@ -9,6 +9,21 @@
 #include "Atomic.h"
 #include "ObjectWaiter.h"
 
+void ObjectMonitor::print(string name) {
+    ObjectWaiter* next = const_cast<ObjectWaiter *>(_head);
+
+    stringstream ss;
+    ss << name << " queue: [";
+    while (next != NULL) {
+        JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
+
+        ss << next_thread->_name << ", ";
+        next = const_cast<ObjectWaiter *>(next->_next);
+    }
+    ss << "]";
+    INFO_PRINT("%s", ss.str().c_str());
+}
+
 void ObjectMonitor::enter(JavaThread *thread) {
     void* ret = NULL;
 
@@ -39,9 +54,11 @@ void ObjectMonitor::enter(JavaThread *thread) {
 //                node._next = node._prev = &node;
 
                 INFO_PRINT( "[%s] 第一个，加入队列成功", thread->_name.c_str());
+                print(thread->_name);
                 break;
             } else {
                 INFO_PRINT( "[%s] 第一个，加入队列失败", thread->_name.c_str());
+                print(thread->_name);
             }
         } else { // 队列中有线程
             ObjectWaiter* tail = const_cast<ObjectWaiter *>(_tail);
@@ -52,9 +69,11 @@ void ObjectMonitor::enter(JavaThread *thread) {
                 tail->_next = node;
 
                 INFO_PRINT( "[%s] 不是第一个，加入队列成功", thread->_name.c_str());
+                print(thread->_name);
                 break;
             } else {
                 INFO_PRINT( "[%s] 不是第一个，加入队列失败", thread->_name.c_str());
+                print(thread->_name);
             }
         }
     }
@@ -73,6 +92,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
 }
 
 void ObjectMonitor::exit(JavaThread *thread) {
+    // TODO: JavaThread是否相等，需要重写JavaThread的operator ==，根据两个JavaThread的tid是否相等进行判断（pthread_equal）
     if (_owner != thread) {
         INFO_PRINT("[%s] 非持锁线程不得释放锁", thread->_name.c_str());
         return;
@@ -81,7 +101,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
     // 处理重入
     // 如果重入次数不为0，就重入次数减一
     // 如果重入次数为0，就释放锁
-    if (_owner == thread && 0 != _recursions) {
+    if (0 != _recursions) {
         _recursions--;
         return;
     }
@@ -108,6 +128,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
             // 清除锁标志，释放锁
             INFO_PRINT("[%s] 释放锁", thread->_name.c_str());
             _owner = NULL;
+            print(thread->_name);
             return;
         } else {
             INFO_PRINT("[%s] not all done", thread->_name.c_str());
@@ -115,9 +136,11 @@ void ObjectMonitor::exit(JavaThread *thread) {
 
         if (_head != NULL) {
             INFO_PRINT("[%s]释放锁，head不为null", thread->_name.c_str());
+            print(thread->_name);
             break;
         } else {
             INFO_PRINT("[%s]释放锁，head为null", thread->_name.c_str());
+            print(thread->_name);
         }
 
         sleep(1);
@@ -132,6 +155,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
     while (true) {
         if (head->_next != NULL) {
             _head = head->_next;
+            print(thread->_name);
             break;
         } else {
             // 将head置为NULL之前head->_next可能被赋值，然后再将head置为NULL，就把next丢了
@@ -148,6 +172,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
 
             if (unrun == 1) {
                 _head = _tail = NULL;
+                print(thread->_name);
                 break;
             }
         }
@@ -160,16 +185,17 @@ void ObjectMonitor::exit(JavaThread *thread) {
     // 唤醒等待线程
     while (true) {
         // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
+        // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
+        // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
+        // 所以这里在唤醒时加锁
+        INFO_PRINT("[%s] head thread %s state %d", thread->_name.c_str(), head_thread->_name.c_str(), head_thread->_state);
         if (head_thread->_state == MONITOR_WAIT) {
             INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
-            // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
-            // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
-            // 所以这里循环唤醒，直到thread的状态改变
-            while (head_thread->_state == MONITOR_WAIT) {
-                pthread_cond_signal(head_thread->_cond);
-                sleep(1);
-            }
+            pthread_mutex_lock(head_thread->_startThread_lock);
+            pthread_cond_signal(head_thread->_cond);
+            pthread_mutex_unlock(head_thread->_startThread_lock);
             break;
         }
+        sleep(1);
     }
 }

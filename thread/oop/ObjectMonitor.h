@@ -38,6 +38,8 @@ public:
     }
     void enter(JavaThread* thread);
     void exit(JavaThread* thread);
+
+    void print(string name);
 };
 
 
