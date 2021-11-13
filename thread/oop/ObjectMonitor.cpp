@@ -184,13 +184,15 @@ void ObjectMonitor::exit(JavaThread *thread) {
 
     // 唤醒等待线程
     while (true) {
-        // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
-        // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
-        // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
-        // 所以这里在唤醒时加锁
         INFO_PRINT("[%s] head thread %s state %d", thread->_name.c_str(), head_thread->_name.c_str(), head_thread->_state);
+        // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
+        // 根据线程状态进行判断，只有达到MONITOR_WAIT状态，才代表线程进入阻塞逻辑了，才能进行唤醒线程
         if (head_thread->_state == MONITOR_WAIT) {
             INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
+            // 加锁是为了防止下面的问题：
+            // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
+            // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
+            // 所以这里在唤醒线程前，对这个线程加锁
             pthread_mutex_lock(head_thread->_startThread_lock);
             pthread_cond_signal(head_thread->_cond);
             pthread_mutex_unlock(head_thread->_startThread_lock);
