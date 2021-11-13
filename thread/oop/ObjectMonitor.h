@@ -20,11 +20,21 @@ public:
     // 队列
     volatile ObjectWaiter*       _tail;
     volatile ObjectWaiter*        _head;
+
+    // number of waiting threads
+    volatile int _waiters;
+    //
+    ObjectWaiter* volatile _waiterSet;
+    // protects waiterSet，简单的自旋锁
+    volatile bool _waiterSetLock;
 public:
     ObjectMonitor() {
         _recursions = 0;
         _owner = NULL;
         _tail = _head = NULL;
+        _waiters = 0;
+        _waiterSet = NULL;
+        _waiterSetLock = false;
     }
     void enter(JavaThread* thread);
     void exit(JavaThread* thread);

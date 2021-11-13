@@ -4,6 +4,8 @@
 
 #include "JavaThread.h"
 #include "ObjectMonitor.h"
+#include "Atomic.h"
+#include "ObjectWaiter.h"
 
 extern int val;
 extern ObjectMonitor objectMonitor;
@@ -16,14 +18,15 @@ void* thread_do(void* arg) {
     pthread_cond_wait(Self->_cond, Self->_startThread_lock);
     pthread_mutex_unlock(Self->_startThread_lock);
 
-    objectMonitor.enter(Self);
-
     Self->_state = RUNNABLE;
+
+    objectMonitor.enter(Self);
 
     for (int j = 0; j < 10000; j++) {
         val++;
     }
 
+    Self->_state = FINISHED;
     objectMonitor.exit(Self);
 
     Self->_state = ZOMBIE;
@@ -42,6 +45,26 @@ JavaThread::JavaThread(string name) {
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     _state = ALLOCATED;
+
+    // 自旋，将所创建的线程到objectMonitor
+    for (;;) {
+        if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &objectMonitor._waiterSetLock,
+                                       reinterpret_cast<void *>(false))) == false) {
+            objectMonitor._waiters++;
+            INFO_PRINT("[%s] 加入waiter set", this->_name.c_str());
+            ObjectWaiter* node = new ObjectWaiter(this);
+            if (objectMonitor._waiterSet == NULL) {
+                objectMonitor._waiterSet = node;
+            } else {
+                node->_next = objectMonitor._waiterSet;
+                objectMonitor._waiterSet->_prev = node;
+                objectMonitor._waiterSet = node;
+            }
+            objectMonitor._waiterSetLock = false;
+            break;
+        }
+        sleep(1);
+    }
 
     pthread_create(_tid, &attr, thread_do, this);
 
@@ -65,10 +88,8 @@ void JavaThread::run() {
 void JavaThread::join() {
     while (true) {
         if (_state == ZOMBIE) {
-            INFO_PRINT("[%s] 执行完毕", _name.c_str());
             break;
         } else {
-            INFO_PRINT("[%s]:[%X] 线程状态: %d", _name.c_str(), pthread_self(), _state);
         }
 
         sleep(1);

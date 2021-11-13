@@ -30,6 +30,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
 
     // 加入队列
     ObjectWaiter* node = new ObjectWaiter(thread);
+    // 死循环是确保线程成功入队，没有入队之后就没办法被唤醒了
     for (;;) {
         if (_tail == NULL) { // 队列中还没有线程
             if (Atomic::cmpxchg_ptr(node, &_tail, NULL) == NULL) {
@@ -60,6 +61,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
 
     // 阻塞等待唤醒，当持有锁的线程，释放锁时唤醒，让队列中的线程进行抢锁
     pthread_mutex_lock(thread->_startThread_lock);
+    thread->_state = MONITOR_WAIT;
     INFO_PRINT("[%s] 线程阻塞，等待唤醒", thread->_name.c_str());
     pthread_cond_wait(thread->_cond, thread->_startThread_lock);
     pthread_mutex_unlock(thread->_startThread_lock);
@@ -70,6 +72,11 @@ void ObjectMonitor::enter(JavaThread *thread) {
 }
 
 void ObjectMonitor::exit(JavaThread *thread) {
+    if (_owner != thread) {
+        INFO_PRINT("[%s] 非持锁线程不得释放锁", thread->_name.c_str());
+        return;
+    }
+
     // 处理重入
     // 如果重入次数不为0，就重入次数减一
     // 如果重入次数为0，就释放锁
@@ -80,29 +87,83 @@ void ObjectMonitor::exit(JavaThread *thread) {
 
     // 释放锁，并唤醒队列中的一个线程，根据是公平锁或非公平锁选择下一个抢锁的线程
 
-    // 清除锁标志，释放锁
-    INFO_PRINT("[%s] 释放锁", thread->_name.c_str());
-    _owner = NULL;
+    // 最后一个等待线程还没有成功入队，但是该线程执行完了，之后没有人唤醒最后一个等待线程了
+    // 如何判定所有线程都执行完毕了？
+    // 自旋，判断所保存的所有线程状态，都执行完毕之后退出，没有执行完毕就等待
+    while (true) {
+        ObjectWaiter* next = _waiterSet;
+        bool all_done = true;
+        for (int i = 0; i < _waiters; i++) {
+            JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
+            if (next_thread->_state < FINISHED) {
+                all_done = false;
+                break;
+            }
+            next = const_cast<ObjectWaiter *>(next->_next);
+        }
+
+        if (all_done) {
+            INFO_PRINT("[%s] all done", thread->_name.c_str());
+            // 清除锁标志，释放锁
+            INFO_PRINT("[%s] 释放锁", thread->_name.c_str());
+            _owner = NULL;
+            return;
+        } else {
+            INFO_PRINT("[%s] not all done", thread->_name.c_str());
+        }
+
+        if (_head != NULL) {
+            INFO_PRINT("[%s]释放锁，head不为null", thread->_name.c_str());
+            break;
+        } else {
+            INFO_PRINT("[%s]释放锁，head为null", thread->_name.c_str());
+        }
+
+        sleep(1);
+    }
 
     // 取出队列中第一个元素
     ObjectWaiter* head = const_cast<ObjectWaiter *>(_head);
 
-    // 如果队列中没有元素了，即没有等待的线程了，就不需要再唤醒了，直接退出即可
-    if (head == NULL) {
-        return;
+    JavaThread* head_thread = const_cast<JavaThread *>(head->_thread);
+    INFO_PRINT("[%s] head thread [%s]", thread->_name.c_str(), head_thread->_name.c_str());
+
+    while (true) {
+        if (head->_next != NULL) {
+            _head = head->_next;
+            break;
+        } else {
+            // 将head置为NULL之前head->_next可能被赋值，然后再将head置为NULL，就把next丢了
+            // head->_next什么时候应该为NULL？当前要被唤醒的线程是最后一个未被唤醒的线程
+            ObjectWaiter* next = _waiterSet;
+            int unrun = 0;
+            for (int i = 0; i < _waiters; i++) {
+                JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
+                if (next_thread->_state <= MONITOR_WAIT) {
+                    unrun++;
+                }
+                next = const_cast<ObjectWaiter *>(next->_next);
+            }
+
+            if (unrun == 1) {
+                _head = _tail = NULL;
+                break;
+            }
+        }
     }
 
-    JavaThread* head_thread = const_cast<JavaThread *>(head->_thread);
-    INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
+    // 清除锁标志，释放锁
+    INFO_PRINT("[%s] 释放锁", thread->_name.c_str());
+    _owner = NULL;
 
-    if (head->_next != NULL) {
-        _head = head->_next;
-
-        // 唤醒线程
-        pthread_cond_signal(head_thread->_cond);
-    } else {
-        // 唤醒线程
-        pthread_cond_signal(head_thread->_cond);
+    // 唤醒等待线程
+    while (true) {
+        // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
+        if (head_thread->_state == MONITOR_WAIT) {
+            INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
+            pthread_cond_signal(head_thread->_cond);
+            break;
+        }
     }
 }
 

@@ -6,7 +6,7 @@
 int val = 0;
 ObjectMonitor objectMonitor;
 
-int main() {
+int test() {
     JavaThread* t1 = new JavaThread("t1");
     JavaThread* t2 = new JavaThread("t2");
     JavaThread* t3 = new JavaThread("t3");
@@ -25,7 +25,19 @@ int main() {
     t4->join();
     t5->join();
 
-    INFO_PRINT("val: %d", val);
+    if (val != 50000) {
+        exit(-1);
+    } else {
+        INFO_PRINT("val: %d", val);
+        val = 0;
+    }
+}
+
+int main() {
+
+    for (int i = 0; i < 10000; i++) {
+        test();
+    }
 
     return 0;
 }

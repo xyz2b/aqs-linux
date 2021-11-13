@@ -16,6 +16,7 @@ enum ThreadState {
     OBJECT_WAIT,                  // Waiting on an Object.wait() call
     BREAKPOINTED,                 // Suspended at breakpoint
     SLEEPING,                     // Thread.sleep()
+    FINISHED,
     ZOMBIE                        // All done, but not reclaimed yet
 };
 
