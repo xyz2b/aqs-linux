@@ -24,6 +24,10 @@ void* thread_do(void* arg) {
 
     objectMonitor.enter(Self);
 
+    objectMonitor.enter(Self);
+    INFO_PRINT("测试重入")
+    objectMonitor.exit(Self);
+
     for (int j = 0; j < 10000; j++) {
         val++;
     }

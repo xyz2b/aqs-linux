@@ -38,6 +38,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
     if (thread == ret) {
         // 重入次数加一
         _recursions++;
+        INFO_PRINT("[%s]重入，次数: %d", thread->_name.c_str(), _recursions);
         return;
     }
 
@@ -105,6 +106,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
     // 如果重入次数为0，就释放锁
     if (0 != _recursions) {
         _recursions--;
+        INFO_PRINT("[%s]重入解除，次数: %d", thread->_name.c_str(), _recursions);
         return;
     }
 
