@@ -15,6 +15,7 @@ void* thread_do(void* arg) {
 
     pthread_mutex_lock(Self->_startThread_lock);
     Self->_state = INITIALIZED;
+    INFO_PRINT("[%s] 线程阻塞，等待唤醒", Self->_name.c_str());
     pthread_cond_wait(Self->_cond, Self->_startThread_lock);
     pthread_mutex_unlock(Self->_startThread_lock);
 
@@ -79,7 +80,10 @@ JavaThread::JavaThread(string name) {
 void JavaThread::run() {
     while (true) {
         if (_state == INITIALIZED) {
+            INFO_PRINT("唤醒 [%s]", this->_name.c_str());
+            pthread_mutex_lock(_startThread_lock);
             pthread_cond_signal(_cond);
+            pthread_mutex_unlock(_startThread_lock);
             break;
         }
 
