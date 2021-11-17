@@ -119,9 +119,9 @@ void ObjectMonitor::exit(JavaThread *thread) {
     // 自旋，如果当倒数第二个线程退出时，最后一个等待线程成功入队，即获取队列首部时，不为NULL，就退出自旋。从队列中取出最后一个等待线程进行唤醒。
     //      如果最后一个等待线程还没有成功入队，即获取队列首部时，为NULL，就自旋等待
     while (true) {
-        ObjectWaiter* next = _waiterSet;
+        ObjectWaiter* next = _entryList;
         bool all_done = true;
-        for (int i = 0; i < _waiters; i++) {
+        for (int i = 0; i < _entryListLength; i++) {
             JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
             if (next_thread->_state < FINISHED) {
                 all_done = false;
@@ -167,9 +167,9 @@ void ObjectMonitor::exit(JavaThread *thread) {
         } else {
             // 将head置为NULL之前head->_next可能被赋值，然后再将head置为NULL，就把next丢了
             // head->_next什么时候应该为NULL？当前要被唤醒的线程是最后一个未被唤醒的线程
-            ObjectWaiter* next = _waiterSet;
+            ObjectWaiter* next = _entryList;
             int unrun = 0;
-            for (int i = 0; i < _waiters; i++) {
+            for (int i = 0; i < _entryListLength; i++) {
                 JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
                 // 线程状态小于等于MONITOR_WAIT时，即代表线程未被唤醒
                 if (next_thread->_state <= MONITOR_WAIT) {

@@ -56,19 +56,19 @@ JavaThread::JavaThread(string name) {
 
     // 自旋，将所创建的线程到objectMonitor
     for (;;) {
-        if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &objectMonitor._waiterSetLock,
+        if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &objectMonitor._entryListLock,
                                        reinterpret_cast<void *>(false))) == false) {
-            objectMonitor._waiters++;
+            objectMonitor._entryListLength++;
             INFO_PRINT("[%s] 加入waiter set", this->_name.c_str());
             ObjectWaiter* node = new ObjectWaiter(this);
-            if (objectMonitor._waiterSet == NULL) {
-                objectMonitor._waiterSet = node;
+            if (objectMonitor._entryList == NULL) {
+                objectMonitor._entryList = node;
             } else {
-                node->_next = objectMonitor._waiterSet;
-                objectMonitor._waiterSet->_prev = node;
-                objectMonitor._waiterSet = node;
+                node->_next = objectMonitor._entryList;
+                objectMonitor._entryList->_prev = node;
+                objectMonitor._entryList = node;
             }
-            objectMonitor._waiterSetLock = false;
+            objectMonitor._entryListLock = false;
             break;
         }
         sleep(1);
