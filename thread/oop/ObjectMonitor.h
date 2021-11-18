@@ -23,10 +23,10 @@ public:
 
     // number of all threads
     volatile int _entryListLength;
-    // 保存所有线程的队列，主要需要看所有线程的状态，这个字段的名字起得不太对，后续需要改，_waiterSet令有其用
+    // 保存所有线程的列表，主要需要看所有线程的状态，这个字段的名字起得不太对，后续需要改，_waiterSet令有其用
     // _waiterSet是重量级锁中的一个队列，调用wait方法阻塞的线程队列
     ObjectWaiter* volatile _entryList;
-    // protects waiterSet，简单的自旋锁
+    // protects entryList，简单的自旋锁
     volatile bool _entryListLock;
 public:
     ObjectMonitor() {

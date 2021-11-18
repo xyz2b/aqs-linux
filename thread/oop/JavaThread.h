@@ -25,12 +25,16 @@ private:
 
 
 public:
+    // 线程的tid
     pthread_t _tid[1];
+    // 线程的名字
     string _name;
 
+    // 用于锁以及阻塞线程
     pthread_mutex_t _startThread_lock[1];
     pthread_cond_t _cond[1];
 
+    // 线程的状态
     ThreadState _state;
     // 中断标记位，JavaThread标识为中断，当其被唤醒之后会自己退出（在执行业务逻辑前）
     bool _interrupted;
