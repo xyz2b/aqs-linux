@@ -64,6 +64,11 @@ public:
     }
 
     // 本段代码的执行效果类似上面的方法的效果,不过这段代码是原子性的
+    /**
+     * 比较*dest == compare_value
+     *      如果相等，*dest = exchange_value，返回*dest的原值
+     *      如果不相等，则直接返回*dest的值
+     * */
     static long cmpxchg(long exchange_value, volatile long* dest, long compare_value) {
         __asm__ __volatile__ ("lock; cmpxchgq %1,(%3)"
         : "=a" (exchange_value)
