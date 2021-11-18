@@ -22,6 +22,7 @@ void* thread_do(void* arg) {
     // 开始执行业务逻辑，包括加锁的逻辑
     Self->_state = RUNNABLE;
 
+    // 进入临界区
     objectMonitor.enter(Self);
 
     objectMonitor.enter(Self);
@@ -34,6 +35,7 @@ void* thread_do(void* arg) {
 
     // 业务逻辑执行完成，不包括解锁的逻辑
     Self->_state = FINISHED;
+    // 退出临界区
     objectMonitor.exit(Self);
 
     // 业务逻辑执行完成，包括解锁的逻辑
