@@ -13,7 +13,7 @@ int test() {
     JavaThread* t4 = new JavaThread("t4");
     JavaThread* t5 = new JavaThread("t5");
     JavaThread* t6 = new JavaThread("t6");
-    JavaThread* t7 = new JavaThread("7");
+    JavaThread* t7 = new JavaThread("t7");
     JavaThread* t8 = new JavaThread("t8");
     JavaThread* t9 = new JavaThread("t9");
     JavaThread* t10 = new JavaThread("t10");

@@ -27,6 +27,7 @@ void ObjectMonitor::print(string name) {
 void ObjectMonitor::enter(JavaThread *thread) {
     void* ret = NULL;
 
+    // 1.通过CAS抢锁
     // 如果当前没有线程此有锁，即_owner为NULL，就可以直接抢锁，抢锁成功返回原owner的值
     // 原owner为NULL代表抢锁成功，如果不为NULL，代表已有有线程持有锁了，即返回持有锁的线程
     if ((ret = Atomic::cmpxchg_ptr(thread, &_owner, NULL)) == NULL) {
@@ -34,6 +35,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
         return;
     }
 
+    // 2.处理重入
     // 如果抢锁的线程和持有锁的线程是同一个线程，可以重入
     if (thread == ret) {
         // 重入次数加一
@@ -44,7 +46,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
 
     INFO_PRINT("[%s] 抢锁失败，加入队列", thread->_name.c_str());
 
-    // 加入队列
+    // 3.加入队列
     ObjectWaiter* node = new ObjectWaiter(thread);
     // 死循环是确保线程成功入队，没有入队之后就没办法被唤醒了
     for (;;) {
@@ -79,7 +81,7 @@ void ObjectMonitor::enter(JavaThread *thread) {
         }
     }
 
-    // 阻塞等待唤醒，当持有锁的线程，释放锁时唤醒，让队列中的线程进行抢锁
+    // 4.线程阻塞等待唤醒，当持有锁的线程，释放锁时唤醒，让队列中的线程进行抢锁
     pthread_mutex_lock(thread->_startThread_lock);
     // 线程处于没有抢到锁阻塞的状态
     thread->_state = MONITOR_WAIT;
@@ -95,13 +97,15 @@ void ObjectMonitor::enter(JavaThread *thread) {
 }
 
 void ObjectMonitor::exit(JavaThread *thread) {
+    // 这个函数是线程安全的，因为只有一个线程能够抢到锁，抢到锁的线程才会去释放锁，所以只有一个线程会释放锁而进入该函数的逻辑，所以不存在多线程问题
+
     // TODO: JavaThread是否相等，需要重写JavaThread的operator ==，根据两个JavaThread的tid是否相等进行判断（pthread_equal）
     if (_owner != thread) {
         INFO_PRINT("[%s] 非持锁线程不得释放锁", thread->_name.c_str());
         return;
     }
 
-    // 处理重入
+    // 1.处理重入
     // 如果重入次数不为0，就重入次数减一
     // 如果重入次数为0，就释放锁
     if (0 != _recursions) {
@@ -111,7 +115,6 @@ void ObjectMonitor::exit(JavaThread *thread) {
     }
 
     // 释放锁，并唤醒队列中的一个线程，根据是公平锁或非公平锁选择下一个抢锁的线程
-
 
     // 1.如何判定所有线程都执行完毕了？
     // 自旋，判断所保存的所有线程状态，都执行完毕之后退出。有没有执行完毕的线程就自旋等待
@@ -153,6 +156,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
         sleep(1);
     }
 
+    // 2.出队
     // 取出队列中第一个元素
     ObjectWaiter* head = const_cast<ObjectWaiter *>(_head);
 
@@ -186,11 +190,26 @@ void ObjectMonitor::exit(JavaThread *thread) {
         }
     }
 
-    // 清除锁标志，释放锁
-    INFO_PRINT("[%s] 释放锁", thread->_name.c_str());
-    _owner = NULL;
+    // 3.清除锁标志，释放锁
+    // 为什么释放锁，在出队之后
+    // 因为在出队之前释放了锁，此时锁已释放，队列之外的其他线程（即新来的线程）可以抢。
+    // 又因为此时释放锁的线程的出队动作还未完成，如果新来的线程抢到了锁，
+    //      并且在释放锁的线程还未完成出队动作之前，新来抢到锁的线程也进行了出队，两个线程同时都进行了出队，
+    //      此时，释放锁的线程和新来抢到锁的线程 出队的线程可能是同一个，因为出队时并没有上锁。
+    // 然后在后面唤醒时，如果释放锁的线程 或者 新来抢到锁的线程 中某个线程先进行了队首线程的唤醒，
+    // 同时如果被唤醒的队首线程执行完毕之后，另一个线程才执行到唤醒逻辑，此时被唤醒的队首线程的状态是执行完毕状态，而不是阻塞等待状态，
+    // 另一个刚执行到唤醒逻辑的线程，就会一直在轮询队首线程的状态，等待其状态为阻塞等待，然后进行唤醒，又因为此时队首线程已经执行完毕，状态不可能再为阻塞等待，
+    //      所以此时这个刚执行到唤醒逻辑的线程就会陷入死循环
+    for (;;) {
+        if (thread == Atomic::cmpxchg_ptr(NULL, &_owner, thread)) {
+            INFO_PRINT("[%s] 释放锁成功，将owner置为NULL", thread->_name.c_str());
+            break;
+        } else {
+            INFO_PRINT("[%s] 尝试释放锁，将owner置为NULL", thread->_name.c_str());
+        }
+    }
 
-    // 唤醒等待线程
+    // 4.唤醒等待线程
     while (true) {
         INFO_PRINT("[%s] head thread %s state %d", thread->_name.c_str(), head_thread->_name.c_str(), head_thread->_state);
         // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
