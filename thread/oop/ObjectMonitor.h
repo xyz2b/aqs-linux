@@ -7,6 +7,7 @@
 
 #include "../../include/common.h"
 
+// 在.h文件中使用class定义，在.c文件中再include，避免循环引用的问题
 class JavaThread;
 class ObjectWaiter;
 

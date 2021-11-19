@@ -3,11 +3,10 @@
 //
 
 #include "ObjectMonitor.h"
-
-#include "../../include/common.h"
 #include "JavaThread.h"
 #include "Atomic.h"
 #include "ObjectWaiter.h"
+#include "ParkEvent.h"
 
 void ObjectMonitor::print(string name) {
     ObjectWaiter* next = const_cast<ObjectWaiter *>(_head);
@@ -82,12 +81,13 @@ void ObjectMonitor::enter(JavaThread *thread) {
     }
 
     // 4.线程阻塞等待唤醒，当持有锁的线程，释放锁时唤醒，让队列中的线程进行抢锁
-    pthread_mutex_lock(thread->_sync_lock);
-    // 线程处于没有抢到锁阻塞的状态
-    thread->_state = MONITOR_WAIT;
-    INFO_PRINT("[%s] 线程阻塞，等待唤醒", thread->_name.c_str());
-    pthread_cond_wait(thread->_sync_cond, thread->_sync_lock);
-    pthread_mutex_unlock(thread->_sync_lock);
+//    pthread_mutex_lock(thread->_sync_lock);
+//    // 线程处于没有抢到锁阻塞的状态
+//    thread->_state = INITIALIZED;
+//    INFO_PRINT("[%s] 线程阻塞，等待唤醒", thread->_name.c_str());
+//    pthread_cond_wait(thread->_sync_cond, thread->_sync_lock);
+//    pthread_mutex_unlock(thread->_sync_lock);
+    thread->_sync_park_event->park();
 
     // 线程被唤醒运行的状态，进行抢锁
     thread->_state = RUNNABLE;
@@ -175,8 +175,8 @@ void ObjectMonitor::exit(JavaThread *thread) {
             int unrun = 0;
             for (int i = 0; i < _entryListLength; i++) {
                 JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
-                // 线程状态小于等于MONITOR_WAIT时，即代表线程未被唤醒
-                if (next_thread->_state <= MONITOR_WAIT) {
+                // 线程状态等于INITIALIZED时，即代表线程未被唤醒
+                if (next_thread->_state == INITIALIZED) {
                     unrun++;
                 }
                 next = const_cast<ObjectWaiter *>(next->_next);
@@ -214,17 +214,18 @@ void ObjectMonitor::exit(JavaThread *thread) {
     while (true) {
         INFO_PRINT("[%s] head thread %s state %d", thread->_name.c_str(), head_thread->_name.c_str(), head_thread->_state);
         // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
-        // 根据线程状态进行判断，只有达到MONITOR_WAIT状态，才代表线程进入阻塞逻辑了，才能进行唤醒线程
+        // 根据线程状态进行判断，只有达到INITIALIZED状态，才代表线程进入阻塞逻辑了，才能进行唤醒线程
         // 上面的问题叫做先行发生(happens before)，要避免这种情况
-        if (head_thread->_state == MONITOR_WAIT) {
+        if (head_thread->_state == INITIALIZED) {
             INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
             // 加锁是为了防止下面的问题：
             // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
             // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
             // 所以这里在唤醒线程前，对这个线程加锁
-            pthread_mutex_lock(head_thread->_sync_lock);
-            pthread_cond_signal(head_thread->_sync_cond);
-            pthread_mutex_unlock(head_thread->_sync_lock);
+//            pthread_mutex_lock(head_thread->_sync_lock);
+//            pthread_cond_signal(head_thread->_sync_cond);
+//            pthread_mutex_unlock(head_thread->_sync_lock);
+            head_thread->_sync_park_event->unpark();
             break;
         }
         sleep(1);

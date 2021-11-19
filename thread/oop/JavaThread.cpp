@@ -6,6 +6,7 @@
 #include "ObjectMonitor.h"
 #include "Atomic.h"
 #include "ObjectWaiter.h"
+#include "ParkEvent.h"
 
 extern int val;
 extern ObjectMonitor objectMonitor;
@@ -50,8 +51,9 @@ JavaThread::JavaThread(string name) {
     pthread_mutex_init(_startThread_lock, NULL);
     pthread_cond_init(_cond, NULL);
 
-    pthread_mutex_init(_sync_lock, NULL);
-    pthread_cond_init(_sync_cond, NULL);
+//    pthread_mutex_init(_sync_lock, NULL);
+//    pthread_cond_init(_sync_cond, NULL);
+    _sync_park_event = new ParkEvent(this);
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -122,8 +124,9 @@ JavaThread::JavaThread(int thread_num) {
     pthread_mutex_init(_startThread_lock, NULL);
     pthread_cond_init(_cond, NULL);
 
-    pthread_mutex_init(_sync_lock, NULL);
-    pthread_cond_init(_sync_cond, NULL);
+//    pthread_mutex_init(_sync_lock, NULL);
+//    pthread_cond_init(_sync_cond, NULL);
+    _sync_park_event = new ParkEvent(this);
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);

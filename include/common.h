@@ -14,6 +14,7 @@
 #include <map>
 #include <sstream>
 #include <iostream>
+#include <assert.h>
 
 using namespace std;
 
@@ -81,5 +82,8 @@ typedef enum {
 #define NULL_POINTER(ptr) if (ptr == NULL) { \
     PRINT("ERROR", "null pointer", ##__VA_ARGS__);                                            \
 }
+
+#undef assert
+#define assert(cond, msg) { if (!(cond)) { fprintf(stderr, "assert fails %s %d: %s\n", __FILE__, __LINE__, msg); abort(); }}
 
 #endif //MARK_CLEAR_COMMON_H

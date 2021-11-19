@@ -7,6 +7,8 @@
 
 #include "../../include/common.h"
 
+class ParkEvent;
+
 enum ThreadState {
     ALLOCATED,                    // Memory has been allocated but not initialized
     INITIALIZED,                  // The thread has been initialized but yet started
@@ -34,9 +36,8 @@ public:
     pthread_mutex_t _startThread_lock[1];
     pthread_cond_t _cond[1];
 
-    // 用于synchronized
-    pthread_mutex_t _sync_lock[1];
-    pthread_cond_t _sync_cond[1];
+    // 用于synchronized，阻塞唤醒线程
+    ParkEvent* _sync_park_event;
 
     // 线程的状态
     ThreadState _state;
