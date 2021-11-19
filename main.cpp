@@ -50,10 +50,14 @@ int test() {
 
 int main() {
 
-    for (int i = 0; i < 10000; i++) {
-        INFO_PRINT("run: %d", i);
-        test();
-    }
+//    for (int i = 0; i < 10000; i++) {
+//        INFO_PRINT("run: %d", i);
+//        test();
+//    }
+
+    // 直接将对象指针当成一个long类型的整数来用，传入的值就是这个整数的值
+    markOop o = markOop(1);
+    INFO_PRINT("%X", o);
 
     return 0;
 }
