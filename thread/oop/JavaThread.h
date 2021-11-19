@@ -34,7 +34,7 @@ public:
     pthread_mutex_t _startThread_lock[1];
     pthread_cond_t _cond[1];
 
-    // 用于sync
+    // 用于synchronized
     pthread_mutex_t _sync_lock[1];
     pthread_cond_t _sync_cond[1];
 
