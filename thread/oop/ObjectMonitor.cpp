@@ -215,6 +215,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
         INFO_PRINT("[%s] head thread %s state %d", thread->_name.c_str(), head_thread->_name.c_str(), head_thread->_state);
         // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
         // 根据线程状态进行判断，只有达到MONITOR_WAIT状态，才代表线程进入阻塞逻辑了，才能进行唤醒线程
+        // 上面的问题叫做先行发生(happens before)，要避免这种情况
         if (head_thread->_state == MONITOR_WAIT) {
             INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
             // 加锁是为了防止下面的问题：
