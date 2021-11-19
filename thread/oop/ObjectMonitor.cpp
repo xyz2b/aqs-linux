@@ -89,8 +89,12 @@ void ObjectMonitor::enter(JavaThread *thread) {
 //    pthread_mutex_unlock(thread->_sync_lock);
     thread->_sync_park_event->park();
 
-    // 线程被唤醒运行的状态，进行抢锁
-    thread->_state = RUNNABLE;
+    // 线程被唤醒，进行抢锁
+    // 如果唤醒之后状态大于INITIALIZED，会导致目前要释放锁的线程判断最后一个未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）时，
+    //      会漏掉这个被唤醒之后还未执行到抢锁逻辑的线程，因为判断条件是小于等于INITIALIZED，
+    //      此时目前要释放锁的线程就会认为所有线程都抢到了锁都被执行了，没有未抢到锁未被执行的线程了，目前要释放锁的线程就会把队列置为null，
+    //      那这个被唤醒之后还未执行到抢锁逻辑的线程，如果进入抢锁逻辑时，抢锁失败，同时这个线程加入队列的时机 在 释放锁的线程把队列置为null之前，那就会丢掉这个线程，没人唤醒
+    thread->_state = ALLOCATED;
     INFO_PRINT("[%s] 被唤醒运行", thread->_name.c_str());
     // 抢锁
     enter(thread);
@@ -127,6 +131,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
         for (int i = 0; i < _entryListLength; i++) {
             JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
             if (next_thread->_state < FINISHED) {
+                INFO_PRINT("[%s] state %d", next_thread->_name.c_str(), next_thread->_state);
                 all_done = false;
                 break;
             }
@@ -166,21 +171,24 @@ void ObjectMonitor::exit(JavaThread *thread) {
     while (true) {
         if (head->_next != NULL) {
             _head = head->_next;
+            INFO_PRINT("[%s] head not null, next head [%s]", head_thread->_name.c_str(), const_cast<JavaThread *>(_head->_thread)->_name.c_str());
             print(thread->_name);
             break;
         } else {
             // 将head置为NULL之前head->_next可能被赋值，然后再将head置为NULL，就把next丢了
-            // head->_next什么时候应该为NULL？当前要被唤醒的线程是最后一个未被唤醒的线程
+            // head->_next什么时候应该为NULL？当前要被唤醒的线程是最后一个未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）
             ObjectWaiter* next = _entryList;
             int unrun = 0;
             for (int i = 0; i < _entryListLength; i++) {
                 JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
-                // 线程状态等于INITIALIZED时，即代表线程未被唤醒
-                if (next_thread->_state == INITIALIZED) {
+                // 线程状态小于等于INITIALIZED时，即代表为未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）
+                if (next_thread->_state <= INITIALIZED) {
                     unrun++;
                 }
                 next = const_cast<ObjectWaiter *>(next->_next);
             }
+
+            INFO_PRINT("[%s] unrun: %d", thread->_name.c_str(), unrun);
 
             if (unrun == 1) {
                 _head = _tail = NULL;
@@ -222,6 +230,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
             // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
             // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
             // 所以这里在唤醒线程前，对这个线程加锁
+            // 这里也是先行发生的问题
 //            pthread_mutex_lock(head_thread->_sync_lock);
 //            pthread_cond_signal(head_thread->_sync_cond);
 //            pthread_mutex_unlock(head_thread->_sync_lock);
