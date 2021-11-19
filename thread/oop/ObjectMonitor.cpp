@@ -200,6 +200,7 @@ void ObjectMonitor::exit(JavaThread *thread) {
     // 同时如果被唤醒的队首线程执行完毕之后，另一个线程才执行到唤醒逻辑，此时被唤醒的队首线程的状态是执行完毕状态，而不是阻塞等待状态，
     // 另一个刚执行到唤醒逻辑的线程，就会一直在轮询队首线程的状态，等待其状态为阻塞等待，然后进行唤醒，又因为此时队首线程已经执行完毕，状态不可能再为阻塞等待，
     //      所以此时这个刚执行到唤醒逻辑的线程就会陷入死循环
+    // 不使用CAS也是正常的，但是HotSpot源码中这么写的，I don't know why
     for (;;) {
         if (thread == Atomic::cmpxchg_ptr(NULL, &_owner, thread)) {
             INFO_PRINT("[%s] 释放锁成功，将owner置为NULL", thread->_name.c_str());
