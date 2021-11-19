@@ -6,9 +6,9 @@
 
 #include "JavaThread.h"
 
-void ParkEvent::park() {
+void ParkEvent::park(ThreadState thread_status) {
     pthread_mutex_lock(_lock);
-    _owner->_state = INITIALIZED;
+    _owner->_state = thread_status;
     INFO_PRINT("[%s] 线程阻塞，等待唤醒", _owner->_name.c_str());
     pthread_cond_wait(_cond, _lock);
     pthread_mutex_unlock(_lock);

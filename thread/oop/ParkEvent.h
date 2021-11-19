@@ -51,7 +51,7 @@ public:
 
     }
 
-    void park();
+    void park(ThreadState thread_status);
     void unpark();
 };
 

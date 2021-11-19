@@ -20,20 +20,19 @@ void* thread_do(void* arg) {
     pthread_cond_wait(Self->_cond, Self->_startThread_lock);
     pthread_mutex_unlock(Self->_startThread_lock);
 
+    // 开始执行业务逻辑，包括加锁的逻辑
+    // 如果进入enter之前状态大于SYNC_WAIT，会导致目前要释放锁的线程判断最后一个未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）时，
+    //      会漏掉这个刚进入enter还未执行到抢锁逻辑的线程，因为判断条件是小于等于SYNC_WAIT，
+    //      此时目前要释放锁的线程就会认为所有线程都抢到了锁都被执行了，没有未抢到锁未被执行的线程了，目前要释放锁的线程就会把队列置为null，
+    //      那这个刚进入enter还未执行到抢锁逻辑的线程，如果进入抢锁逻辑时，抢锁失败，同时这个线程加入队列的时机 在 释放锁的线程把队列置为null之前，那就会丢掉这个线程，没人唤醒
+    Self->_state = RUNNABLE;
+
     // 进入临界区
     objectMonitor.enter(Self);
 
     objectMonitor.enter(Self);
     INFO_PRINT("测试重入")
     objectMonitor.exit(Self);
-
-    // 开始执行业务逻辑，不包括加锁的逻辑
-    // 进入enter时，状态必须是小于等于INITIALIZED，所以这里是在enter执行完毕（即抢到锁之后）再改变状态为RUNNABLE
-    // 如果在进入enter之前状态大于INITIALIZED，会导致释放锁的线程判断最后一个未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）时，
-    //      会漏掉这个刚进入enter逻辑之后还未执行到抢锁逻辑的线程，因为判断条件是小于等于INITIALIZED，
-    //      此时释放锁的线程就会认为所有线程都抢到了锁都被执行了，没有未抢到锁未被执行的线程了，释放锁的线程就会把队列置为null，
-    //      那这个刚进入enter还未执行到抢锁逻辑的线程，如果进入抢锁逻辑时，抢锁失败，同时这个线程加入队列的时机 在 释放锁的线程把队列置为null之前，那就会丢掉这个线程，没人唤醒
-    Self->_state = RUNNABLE;
 
     for (int j = 0; j < 10000; j++) {
         val++;

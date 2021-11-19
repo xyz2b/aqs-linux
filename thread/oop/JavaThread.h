@@ -13,6 +13,7 @@ enum ThreadState {
     ALLOCATED,                    // Memory has been allocated but not initialized
     INITIALIZED,                  // The thread has been initialized but yet started
     RUNNABLE,                     // Has been started and is runnable, but not necessarily running
+    SYNC_WAIT,
     MONITOR_WAIT,                 // Waiting on a contended monitor lock
     CONDVAR_WAIT,                 // Waiting on a condition variable
     OBJECT_WAIT,                  // Waiting on an Object.wait() call

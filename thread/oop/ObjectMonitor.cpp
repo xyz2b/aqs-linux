@@ -83,18 +83,18 @@ void ObjectMonitor::enter(JavaThread *thread) {
     // 4.线程阻塞等待唤醒，当持有锁的线程，释放锁时唤醒，让队列中的线程进行抢锁
 //    pthread_mutex_lock(thread->_sync_lock);
 //    // 线程处于没有抢到锁阻塞的状态
-//    thread->_state = INITIALIZED;
+//    thread->_state = SYNC_WAIT;
 //    INFO_PRINT("[%s] 线程阻塞，等待唤醒", thread->_name.c_str());
 //    pthread_cond_wait(thread->_sync_cond, thread->_sync_lock);
 //    pthread_mutex_unlock(thread->_sync_lock);
-    thread->_sync_park_event->park();
+    thread->_sync_park_event->park(SYNC_WAIT);
 
     // 线程被唤醒，进行抢锁
-    // 如果唤醒之后状态大于INITIALIZED，会导致目前要释放锁的线程判断最后一个未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）时，
-    //      会漏掉这个被唤醒之后还未执行到抢锁逻辑的线程，因为判断条件是小于等于INITIALIZED，
+    // 如果唤醒之后状态大于SYNC_WAIT，会导致目前要释放锁的线程判断最后一个未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）时，
+    //      会漏掉这个被唤醒之后还未执行到抢锁逻辑的线程，因为判断条件是小于等于SYNC_WAIT，
     //      此时目前要释放锁的线程就会认为所有线程都抢到了锁都被执行了，没有未抢到锁未被执行的线程了，目前要释放锁的线程就会把队列置为null，
     //      那这个被唤醒之后还未执行到抢锁逻辑的线程，如果进入抢锁逻辑时，抢锁失败，同时这个线程加入队列的时机 在 释放锁的线程把队列置为null之前，那就会丢掉这个线程，没人唤醒
-    thread->_state = ALLOCATED;
+    thread->_state = RUNNABLE;
     INFO_PRINT("[%s] 被唤醒运行", thread->_name.c_str());
     // 抢锁
     enter(thread);
@@ -181,8 +181,8 @@ void ObjectMonitor::exit(JavaThread *thread) {
             int unrun = 0;
             for (int i = 0; i < _entryListLength; i++) {
                 JavaThread* next_thread = const_cast<JavaThread *>(next->_thread);
-                // 线程状态小于等于INITIALIZED时，即代表为未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）
-                if (next_thread->_state <= INITIALIZED) {
+                // 线程状态小于等于SYNC_WAIT时，即代表为未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）
+                if (next_thread->_state <= SYNC_WAIT) {
                     unrun++;
                 }
                 next = const_cast<ObjectWaiter *>(next->_next);
@@ -222,9 +222,9 @@ void ObjectMonitor::exit(JavaThread *thread) {
     while (true) {
         INFO_PRINT("[%s] head thread %s state %d", thread->_name.c_str(), head_thread->_name.c_str(), head_thread->_state);
         // 这里的逻辑是为了防止加入的队列中的线程还未执行到阻塞逻辑，就被释放锁的线程唤醒了
-        // 根据线程状态进行判断，只有达到INITIALIZED状态，才代表线程进入阻塞逻辑了，才能进行唤醒线程
+        // 根据线程状态进行判断，只有达到SYNC_WAIT状态，才代表线程进入阻塞逻辑了，才能进行唤醒线程
         // 上面的问题叫做先行发生(happens before)，要避免这种情况
-        if (head_thread->_state == INITIALIZED) {
+        if (head_thread->_state == SYNC_WAIT) {
             INFO_PRINT("[%s] 释放锁，唤醒 [%s]", thread->_name.c_str(), head_thread->_name.c_str());
             // 加锁是为了防止下面的问题：
             // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
