@@ -34,6 +34,10 @@ public:
     pthread_mutex_t _startThread_lock[1];
     pthread_cond_t _cond[1];
 
+    // 用于sync
+    pthread_mutex_t _sync_lock[1];
+    pthread_cond_t _sync_cond[1];
+
     // 线程的状态
     ThreadState _state;
     // 中断标记位，JavaThread标识为中断，当其被唤醒之后会自己退出（在执行业务逻辑前）

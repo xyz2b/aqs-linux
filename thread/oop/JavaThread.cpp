@@ -50,6 +50,9 @@ JavaThread::JavaThread(string name) {
     pthread_mutex_init(_startThread_lock, NULL);
     pthread_cond_init(_cond, NULL);
 
+    pthread_mutex_init(_sync_lock, NULL);
+    pthread_cond_init(_sync_cond, NULL);
+
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
@@ -118,6 +121,9 @@ JavaThread::JavaThread(int thread_num) {
 
     pthread_mutex_init(_startThread_lock, NULL);
     pthread_cond_init(_cond, NULL);
+
+    pthread_mutex_init(_sync_lock, NULL);
+    pthread_cond_init(_sync_cond, NULL);
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);

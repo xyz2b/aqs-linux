@@ -82,12 +82,12 @@ void ObjectMonitor::enter(JavaThread *thread) {
     }
 
     // 4.线程阻塞等待唤醒，当持有锁的线程，释放锁时唤醒，让队列中的线程进行抢锁
-    pthread_mutex_lock(thread->_startThread_lock);
+    pthread_mutex_lock(thread->_sync_lock);
     // 线程处于没有抢到锁阻塞的状态
     thread->_state = MONITOR_WAIT;
     INFO_PRINT("[%s] 线程阻塞，等待唤醒", thread->_name.c_str());
-    pthread_cond_wait(thread->_cond, thread->_startThread_lock);
-    pthread_mutex_unlock(thread->_startThread_lock);
+    pthread_cond_wait(thread->_sync_cond, thread->_sync_lock);
+    pthread_mutex_unlock(thread->_sync_lock);
 
     // 线程被唤醒运行的状态，进行抢锁
     thread->_state = RUNNABLE;
@@ -222,9 +222,9 @@ void ObjectMonitor::exit(JavaThread *thread) {
             // 两个线程执行的快慢问题，有阻塞逻辑那个线程执行完设置状态之后，
             // 还没来得及执行阻塞逻辑，另一个有唤醒逻辑的线程，就把判断状态以及唤醒逻辑执行完了，造成了先唤醒后阻塞
             // 所以这里在唤醒线程前，对这个线程加锁
-            pthread_mutex_lock(head_thread->_startThread_lock);
-            pthread_cond_signal(head_thread->_cond);
-            pthread_mutex_unlock(head_thread->_startThread_lock);
+            pthread_mutex_lock(head_thread->_sync_lock);
+            pthread_cond_signal(head_thread->_sync_cond);
+            pthread_mutex_unlock(head_thread->_sync_lock);
             break;
         }
         sleep(1);
