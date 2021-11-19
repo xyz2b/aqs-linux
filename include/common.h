@@ -16,7 +16,11 @@
 #include <iostream>
 #include <assert.h>
 
+
 using namespace std;
+
+class MarkOopDesc;
+typedef MarkOopDesc* markOop;
 
 typedef void *              pvoid;
 typedef unsigned char       byte;
