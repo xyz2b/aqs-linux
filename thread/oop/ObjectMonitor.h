@@ -11,6 +11,7 @@
 class JavaThread;
 class ObjectWaiter;
 
+// 重量级锁
 class ObjectMonitor {
 public:
     // 当前持有锁的线程，即锁标志
