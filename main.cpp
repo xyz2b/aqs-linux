@@ -1,6 +1,6 @@
 #include "./include/common.h"
-#include "./thread/oop/ObjectMonitor.h"
-#include "./thread/oop/JavaThread.h"
+#include "thread/ObjectMonitor.h"
+#include "thread/JavaThread.h"
 
 
 int val = 0;

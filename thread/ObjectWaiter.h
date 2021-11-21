@@ -5,7 +5,7 @@
 #ifndef LINUX_OBJECTWAITER_H
 #define LINUX_OBJECTWAITER_H
 
-#include "../../include/common.h"
+#include "../include/common.h"
 
 class JavaThread;
 
