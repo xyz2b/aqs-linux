@@ -20,28 +20,8 @@ void* thread_do(void* arg) {
     pthread_cond_wait(Self->_cond, Self->_startThread_lock);
     pthread_mutex_unlock(Self->_startThread_lock);
 
-    // 开始执行业务逻辑，包括加锁的逻辑
-    // 如果进入enter之前状态大于SYNC_WAIT，会导致目前要释放锁的线程判断最后一个未抢到锁未被执行的线程（包括：被阻塞的线程、唤醒了还未抢到锁的线程）时，
-    //      会漏掉这个刚进入enter还未执行到抢锁逻辑的线程，因为判断条件是小于等于SYNC_WAIT，
-    //      此时目前要释放锁的线程就会认为所有线程都抢到了锁都被执行了，没有未抢到锁未被执行的线程了，目前要释放锁的线程就会把队列置为null，
-    //      那这个刚进入enter还未执行到抢锁逻辑的线程，如果进入抢锁逻辑时，抢锁失败，同时这个线程加入队列的时机 在 释放锁的线程把队列置为null之前，那就会丢掉这个线程，没人唤醒
-    Self->_state = RUNNABLE;
-
-    // 进入临界区
-    objectMonitor.enter(Self);
-
-    objectMonitor.enter(Self);
-    INFO_PRINT("测试重入")
-    objectMonitor.exit(Self);
-
-    for (int j = 0; j < 10000; j++) {
-        val++;
-    }
-
-    // 业务逻辑执行完成，不包括解锁的逻辑
-    Self->_state = FINISHED;
-    // 退出临界区
-    objectMonitor.exit(Self);
+    // 执行业务逻辑
+    Self->_entry_point(Self);
 
     // 执行完成，包括解锁的逻辑
     Self->_state = ZOMBIE;
@@ -137,6 +117,69 @@ JavaThread::JavaThread(int thread_num) {
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     _state = ALLOCATED;
+
+    // 自旋，将所创建的线程到objectMonitor
+    for (;;) {
+        if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &objectMonitor._entryListLock,
+                                       reinterpret_cast<void *>(false))) == false) {
+            objectMonitor._entryListLength++;
+            INFO_PRINT("[%s] 加入waiter set", this->_name.c_str());
+            ObjectWaiter* node = new ObjectWaiter(this);
+            if (objectMonitor._entryList == NULL) {
+                objectMonitor._entryList = node;
+            } else {
+                node->_next = objectMonitor._entryList;
+                objectMonitor._entryList->_prev = node;
+                objectMonitor._entryList = node;
+            }
+            objectMonitor._entryListLock = false;
+            break;
+        }
+        sleep(1);
+    }
+
+    pthread_create(_tid, &attr, thread_do, this);
+
+    pthread_attr_destroy(&attr);
+}
+
+JavaThread::JavaThread(thread_fun entry_point, void *args, string name) {
+    _entry_point = entry_point;
+    _args = args;
+    _name = name;
+
+    pthread_mutex_init(_startThread_lock, NULL);
+    pthread_cond_init(_cond, NULL);
+
+//    pthread_mutex_init(_sync_lock, NULL);
+//    pthread_cond_init(_sync_cond, NULL);
+    _sync_park_event = new ParkEvent(this);
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    _state = ALLOCATED;
+
+    // 自旋，将所创建的线程到objectMonitor
+    for (;;) {
+        if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &objectMonitor._entryListLock,
+                                       reinterpret_cast<void *>(false))) == false) {
+            objectMonitor._entryListLength++;
+            INFO_PRINT("[%s] 加入waiter set", this->_name.c_str());
+            ObjectWaiter* node = new ObjectWaiter(this);
+            if (objectMonitor._entryList == NULL) {
+                objectMonitor._entryList = node;
+            } else {
+                node->_next = objectMonitor._entryList;
+                objectMonitor._entryList->_prev = node;
+                objectMonitor._entryList = node;
+            }
+            objectMonitor._entryListLock = false;
+            break;
+        }
+        sleep(1);
+    }
 
     pthread_create(_tid, &attr, thread_do, this);
 

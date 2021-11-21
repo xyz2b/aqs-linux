@@ -10,6 +10,20 @@
 class InstanceOopDesc {
 public:
     markOop _mark;
+
+    InstanceOopDesc();
+
+    markOop mark() {
+        return _mark;
+    }
+
+    markOop* mark_addr() const    {
+        return (markOop*) &_mark;
+    }
+
+    void set_mark(volatile markOop m)      {
+        _mark = m;
+    }
 };
 
 

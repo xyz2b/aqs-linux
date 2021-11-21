@@ -44,9 +44,16 @@ public:
     ThreadState _state;
     // 中断标记位，JavaThread标识为中断，当其被唤醒之后会自己退出（在执行业务逻辑前）
     bool _interrupted;
+
+    // 线程要执行的函数
+    thread_fun      _entry_point;
+    // 线程要执行的函数的参数
+    void*           _args;
+
 public:
     JavaThread(string name);
     JavaThread(int index);
+    JavaThread(thread_fun entry_point, void *args, string name);
 public:
     void run();
     void join();

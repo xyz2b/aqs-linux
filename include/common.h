@@ -22,6 +22,9 @@ using namespace std;
 class MarkOopDesc;
 typedef MarkOopDesc* markOop;
 
+#define UseBiasedLocking false
+typedef void* (*thread_fun)(void *);
+
 typedef void *              pvoid;
 typedef unsigned char       byte;
 typedef unsigned short      ushort;
