@@ -286,6 +286,7 @@ public:
         return ((value() & monitor_value) != 0);
     }
 
+    // 返回重量级锁对象头中指向重量级锁对象的指针
     ObjectMonitor* monitor() const {
         assert(has_monitor(), "check");
         // Use xor instead of &~ to provide one extra tag-bit check.

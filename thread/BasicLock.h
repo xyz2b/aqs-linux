@@ -13,8 +13,9 @@ class JavaThread;
 // 轻量级锁
 class BasicLock {
 private:
-    // 存储膨胀成轻量级锁之前对象的markOop
+    // 存储膨胀成轻量级锁之前对象头的markOop
     markOop    _displaced_header;
+    // 持有轻量级锁的线程
     JavaThread*     _owner;
 
 public:

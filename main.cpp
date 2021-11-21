@@ -2,9 +2,14 @@
 #include "./thread/ObjectMonitor.h"
 #include "./thread/JavaThread.h"
 #include "./include/GlobalDefinitions.h"
+#include "./thread/BasicLock.h"
+#include "./thread/ObjectSynchronizer.h"
+#include "./oops/InstanceOopDesc.h"
 
 int val = 0;
 ObjectMonitor objectMonitor;
+BasicLock lock;
+InstanceOopDesc obj;
 
 void* thread_do_1(void* arg) {
     JavaThread* Self = static_cast<JavaThread *>(arg);
@@ -17,11 +22,7 @@ void* thread_do_1(void* arg) {
     Self->_state = RUNNABLE;
 
     // 进入临界区
-    objectMonitor.enter(Self);
-
-    objectMonitor.enter(Self);
-    INFO_PRINT("测试重入")
-    objectMonitor.exit(Self);
+    ObjectSynchronizer::fast_enter(&obj, &lock, Self);
 
     for (int j = 0; j < 10000; j++) {
         val++;
@@ -29,8 +30,9 @@ void* thread_do_1(void* arg) {
 
     // 业务逻辑执行完成，不包括解锁的逻辑
     Self->_state = FINISHED;
+
     // 退出临界区
-    objectMonitor.exit(Self);
+    ObjectSynchronizer::fast_exit(&obj, &lock, Self);
 
     return 0;
 }
@@ -78,11 +80,11 @@ int test() {
 }
 
 int main() {
-
-    for (int i = 0; i < 10000; i++) {
-        INFO_PRINT("run: %d", i);
-        test();
-    }
+    test();
+//    for (int i = 0; i < 10000; i++) {
+//        INFO_PRINT("run: %d", i);
+//        test();
+//    }
 
     // 直接将对象指针当成一个long类型的整数来用，传入的值就是这个整数的值，然后返回的也是传入的整数值
 //    markOop o = markOop(1);

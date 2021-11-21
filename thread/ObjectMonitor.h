@@ -12,6 +12,10 @@ class JavaThread;
 class ObjectWaiter;
 
 class ObjectMonitor {
+private:
+    // 存储膨胀成重量级锁之前对象头的markOop
+    volatile markOop   _header;
+    void* volatile _object;
 public:
     // 当前持有锁的线程，即锁标志
     volatile JavaThread* _owner;
@@ -38,6 +42,27 @@ public:
         _entryList = NULL;
         _entryListLock = false;
     }
+
+    markOop header() const {
+        return _header;
+    }
+
+    inline void set_header(markOop hdr) {
+        _header = hdr;
+    }
+
+    inline void* object() const {
+        return _object;
+    }
+
+    inline void* object_addr() {
+        return (void *)(&_object);
+    }
+
+    inline void set_object(void* obj) {
+        _object = obj;
+    }
+
     void enter(JavaThread* thread);
     void exit(JavaThread* thread);
 
