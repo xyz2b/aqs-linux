@@ -11,6 +11,7 @@
 #include "Atomic.h"
 #include "JavaThread.h"
 #include "ObjectMonitor.h"
+#include "ObjectWaiter.h"
 
 void ObjectSynchronizer::fast_enter(InstanceOopDesc* obj, BasicLock* lock, JavaThread *t) {
     markOop mark = obj->mark();
@@ -105,6 +106,27 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t) 
         if (mark->has_monitor()) {
             // 获取重量级锁对象头中的重量级锁对象的指针
             ObjectMonitor* inf = mark->monitor();
+
+            // 自旋，将所创建的线程到objectMonitor
+            for (;;) {
+                if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &objectMonitor._entryListLock,
+                                               reinterpret_cast<void *>(false))) == false) {
+                    inf->_entryListLength++;
+                    INFO_PRINT("[%s] 加入waiter set", t->_name.c_str());
+                    ObjectWaiter* node = new ObjectWaiter(t);
+                    if (inf->_entryList == NULL) {
+                        inf->_entryList = node;
+                    } else {
+                        node->_next = inf->_entryList;
+                        inf->_entryList->_prev = node;
+                        inf->_entryList = node;
+                    }
+                    inf->_entryListLock = false;
+                    break;
+                }
+                sleep(1);
+            }
+
             return inf;
         }
 
@@ -148,6 +170,8 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t) 
             } else {
                 INFO_PRINT("[%s] 膨胀成重量级锁失败", t->_name.c_str());
             }
+
+            
 
             return m;
         }
