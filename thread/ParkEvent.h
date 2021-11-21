@@ -5,7 +5,7 @@
 #ifndef AQS_PARKEVENT_H
 #define AQS_PARKEVENT_H
 
-#include "../../include/common.h"
+#include "../include/common.h"
 #include "JavaThread.h"
 
 // 对阻塞/唤醒线程的逻辑的封装

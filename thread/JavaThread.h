@@ -5,7 +5,7 @@
 #ifndef LINUX_JAVATHREAD_H
 #define LINUX_JAVATHREAD_H
 
-#include "../../include/common.h"
+#include "../include/common.h"
 
 class ParkEvent;
 

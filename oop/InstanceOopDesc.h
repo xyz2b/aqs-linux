@@ -5,7 +5,7 @@
 #ifndef AQS_INSTANCEOOPDESC_H
 #define AQS_INSTANCEOOPDESC_H
 
-#include "../../include/common.h"
+#include "../include/common.h"
 
 class InstanceOopDesc {
 public:
