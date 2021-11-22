@@ -161,26 +161,6 @@ JavaThread::JavaThread(thread_fun entry_point, void *args, string name) {
 
     _state = ALLOCATED;
 
-    // 自旋，将所创建的线程到objectMonitor
-    for (;;) {
-        if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &objectMonitor._entryListLock,
-                                       reinterpret_cast<void *>(false))) == false) {
-            objectMonitor._entryListLength++;
-            INFO_PRINT("[%s] 加入waiter set", this->_name.c_str());
-            ObjectWaiter* node = new ObjectWaiter(this);
-            if (objectMonitor._entryList == NULL) {
-                objectMonitor._entryList = node;
-            } else {
-                node->_next = objectMonitor._entryList;
-                objectMonitor._entryList->_prev = node;
-                objectMonitor._entryList = node;
-            }
-            objectMonitor._entryListLock = false;
-            break;
-        }
-        sleep(1);
-    }
-
     pthread_create(_tid, &attr, thread_do, this);
 
     pthread_attr_destroy(&attr);
