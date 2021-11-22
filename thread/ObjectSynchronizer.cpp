@@ -3,7 +3,6 @@
 //
 
 #include "ObjectSynchronizer.h"
-
 #include "../include/common.h"
 #include "../oops/InstanceOopDesc.h"
 #include "../oops/MarkOopDesc.h"
@@ -12,6 +11,9 @@
 #include "JavaThread.h"
 #include "ObjectMonitor.h"
 #include "ObjectWaiter.h"
+#include "ParkEvent.h"
+
+extern BasicLock lock;
 
 void ObjectSynchronizer::fast_enter(InstanceOopDesc* obj, BasicLock* lock, JavaThread *t) {
     markOop mark = obj->mark();
@@ -35,6 +37,7 @@ void ObjectSynchronizer::fast_exit(InstanceOopDesc* obj, BasicLock* lock, JavaTh
 
     mark = obj->mark();
 
+    // TODO: 轻量级锁膨胀成重量级锁之后，mark就变了，抢到轻量级锁解锁时，就不会走这个逻辑
     if (mark == (markOop)lock && lock->owner() == t) {
         if ((markOop) Atomic::cmpxchg_ptr(dhw, obj->mark_addr(), mark) == mark) {
             INFO_PRINT("[%s] 轻量级锁解锁成功", t->_name.c_str());
@@ -43,6 +46,7 @@ void ObjectSynchronizer::fast_exit(InstanceOopDesc* obj, BasicLock* lock, JavaTh
         }
     }
 
+    INFO_PRINT("[%s] 轻量级锁解锁失败，膨胀成重量级锁", t->_name.c_str());
     // 重量级锁解锁
     // 先膨胀成重量级锁，获取重量级锁对象，然后再解锁重量级锁
     ObjectSynchronizer::inflate(obj, t, true)->exit(t);
@@ -58,7 +62,8 @@ void ObjectSynchronizer::slow_enter(InstanceOopDesc *obj, BasicLock* lock, JavaT
     markOop mark = obj->mark();
 
     // 只有无锁才能变成轻量级锁
-    if(mark->is_neutral()) {
+    // TODO: 如果已经膨胀成重量级锁了，之前轻量级锁的线程释放了轻量级锁，别的线程还能获取不到轻量级锁了，回退不了
+    if(lock->owner() == NULL && mark->is_neutral()) {
         // 保存上一个锁状态的对象头，这里就是将无锁的对象头保存起来
         lock->set_displaced_header(mark);
 
@@ -92,7 +97,18 @@ void ObjectSynchronizer::slow_enter(InstanceOopDesc *obj, BasicLock* lock, JavaT
     // Hotspot中的这句代码，没太明白意图
     lock->set_displaced_header(MarkOopDesc::unused_mark());
     // 膨胀成重量级锁
-    ObjectSynchronizer::inflate(obj, t, false)->enter(t);
+    ObjectMonitor* monitor = ObjectSynchronizer::inflate(obj, t, false);
+
+    // TODO: 膨胀成重量级锁之后，之前拿到轻量级锁的线程需要阻塞等待
+    // 等待抢到轻量级锁的线程执行完成
+    while (true) {
+        if (lock->owner() != NULL && lock->owner()->_state == ZOMBIE) {
+            break;
+        }
+    }
+
+    monitor->enter(t);
+
 }
 
 void ObjectSynchronizer::slow_exit(InstanceOopDesc *obj, BasicLock* lock, JavaThread *t) {
@@ -102,7 +118,6 @@ void ObjectSynchronizer::slow_exit(InstanceOopDesc *obj, BasicLock* lock, JavaTh
 // 膨胀成重量级锁，返回重量级锁
 // 膨胀的意思就是获取重量级锁对象（重量级锁实体对象ObjectMonitor）
 ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, bool exit) {
-    // TODO: 膨胀成重量级锁之后，之前拿到轻量级锁的线程需要阻塞等待
     for (;;) {
         markOop mark = obj->mark();
         INFO_PRINT("[%s] 对象头 %X", t->_name.c_str(), mark);
@@ -113,12 +128,12 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
             // 获取重量级锁对象头中的重量级锁对象的指针
             ObjectMonitor* inf = mark->monitor();
 
+            // TODO: 存在先行发生，如果重量级锁解锁时，该线程还在加入集合的过程中，就不会判断其状态，可能会漏掉唤醒
             if (!exit) {
                 // 自旋，将膨胀到重量级锁的线程到objectMonitor
                 for (;;) {
                     if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &inf->_entryListLock,
                                                    reinterpret_cast<void *>(false))) == false) {
-                        inf->_entryListLength++;
                         INFO_PRINT("[%s] 加入waiter set", t->_name.c_str());
                         ObjectWaiter* node = new ObjectWaiter(t);
                         if (inf->_entryList == NULL) {
@@ -128,6 +143,7 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
                             inf->_entryList->_prev = node;
                             inf->_entryList = node;
                         }
+                        inf->_entryListLength++;
                         inf->_entryListLock = false;
                         break;
                     }
@@ -138,14 +154,14 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
             return inf;
         }
 
-        // 2.目前对象头处于正在从轻量级锁膨胀成重量级锁的中间状态，即对象头为0，表示已经有线程触发膨胀了，还在膨胀的过程中
+        // 2.目前对象头处于正在从轻量级锁膨胀成重量级锁的中间状态，即对象头为0，表示已经有线程触发膨胀了，还在膨胀的过程中，就需要等待这个线程的膨胀过程完成
+        // 只需要重试即可，判断对象头是否已经是重量级锁了，是就直接返回重量级锁对象
         if (mark == MarkOopDesc::INFLATING()) {
-            INFO_PRINT("[%s] 检测到正在膨胀成重量级锁 %d", t->_name.c_str(), mark->has_monitor());
+            INFO_PRINT("[%s] 检测到正在膨胀成重量级锁 %d，阻塞等待唤醒", t->_name.c_str(), mark->has_monitor());
 
             // Hotspot源码的做法是阻塞等待唤醒
-
+//            t->_light_to_monitor_park_event->park(INITIALIZED);
             sleep(1);
-
             continue;
         }
 
@@ -174,9 +190,11 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
             // 只有处于从轻量级锁膨胀成重量级锁的状态时（即处于膨胀过程的中间状态，对象头为0时），才能将重量级锁写入对象头markOop中（才能改变对象头为重量级锁）
             mark = MarkOopDesc::INFLATING();
             if (mark == (markOop) Atomic::cmpxchg_ptr(MarkOopDesc::encode(m), obj->mark_addr(), mark)) {
-                INFO_PRINT("[%s] 膨胀成重量级锁成功 %X", t->_name.c_str(), mark->has_monitor());
+                INFO_PRINT("[%s] 膨胀成重量级锁成功 %X，唤醒其他等待的线程", t->_name.c_str(), mark->has_monitor());
+//                t->_light_to_monitor_park_event->unpark();
             } else {
                 INFO_PRINT("[%s] 膨胀成重量级锁失败", t->_name.c_str());
+                continue;
             }
 
             if (!exit) {
@@ -184,7 +202,6 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
                 for (;;) {
                     if ((bool)(Atomic::cmpxchg_ptr(reinterpret_cast<void *>(true), (void *) &m->_entryListLock,
                                                    reinterpret_cast<void *>(false))) == false) {
-                        m->_entryListLength++;
                         INFO_PRINT("[%s] 加入waiter set", t->_name.c_str());
                         ObjectWaiter* node = new ObjectWaiter(t);
                         if (m->_entryList == NULL) {
@@ -194,6 +211,7 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
                             m->_entryList->_prev = node;
                             m->_entryList = node;
                         }
+                        m->_entryListLength++;
                         m->_entryListLock = false;
                         break;
                     }

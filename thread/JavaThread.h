@@ -37,8 +37,11 @@ public:
     pthread_mutex_t _startThread_lock[1];
     pthread_cond_t _cond[1];
 
-    // 用于synchronized，阻塞唤醒线程
+    // 用于重量级锁，阻塞唤醒线程
     ParkEvent* _sync_park_event;
+
+    // 用于轻量级锁膨胀成重量级锁的过程中
+    ParkEvent* _light_to_monitor_park_event;
 
     // 线程的状态
     ThreadState _state;
@@ -51,8 +54,6 @@ public:
     void*           _args;
 
 public:
-    JavaThread(string name);
-    JavaThread(int index);
     JavaThread(thread_fun entry_point, void *args, string name);
 public:
     void run();
