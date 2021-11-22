@@ -29,7 +29,7 @@ public:
     // _waiterSet是重量级锁中的一个队列，调用wait方法阻塞的线程队列
     ObjectWaiter* volatile _entryList;
     // protects entryList，简单的自旋锁
-    volatile bool _entryListLock;
+    volatile long _entryListLock;
 public:
     ObjectMonitor() {
         _recursions = 0;
