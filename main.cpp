@@ -76,15 +76,17 @@ int test() {
     } else {
         INFO_PRINT("val: %d", val);
         val = 0;
+        lock = *(new BasicLock);
+        obj = *(new InstanceOopDesc);
     }
 }
 
 int main() {
-    test();
-//    for (int i = 0; i < 10000; i++) {
-//        INFO_PRINT("run: %d", i);
-//        test();
-//    }
+//    test();
+    for (int i = 0; i < 10000; i++) {
+        INFO_PRINT("run: %d", i);
+        test();
+    }
 
     // 直接将对象指针当成一个long类型的整数来用，传入的值就是这个整数的值，然后返回的也是传入的整数值
 //    markOop o = markOop(1);
