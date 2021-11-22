@@ -19,7 +19,7 @@ public:
     static void slow_enter(InstanceOopDesc* obj, BasicLock* lock, JavaThread* t);
     static void slow_exit(InstanceOopDesc* obj, BasicLock* lock, JavaThread* t);
 
-    static ObjectMonitor* inflate(InstanceOopDesc* obj, JavaThread* t, bool exit);
+    static ObjectMonitor* inflate(InstanceOopDesc* obj, JavaThread* t);
 };
 
 

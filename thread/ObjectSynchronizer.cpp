@@ -50,7 +50,7 @@ void ObjectSynchronizer::fast_exit(InstanceOopDesc* obj, BasicLock* lock, JavaTh
     INFO_PRINT("[%s] 轻量级锁解锁失败，膨胀成重量级锁", t->_name.c_str());
     // 重量级锁解锁
     // 先膨胀成重量级锁，获取重量级锁对象，然后再解锁重量级锁
-    ObjectSynchronizer::inflate(obj, t, true)->exit(t);
+    ObjectSynchronizer::inflate(obj, t)->exit(t);
 }
 
 /**
@@ -107,7 +107,32 @@ void ObjectSynchronizer::slow_enter(InstanceOopDesc *obj, BasicLock* lock, JavaT
     }
 
     // 膨胀成重量级锁
-    ObjectSynchronizer::inflate(obj, t, false)->enter(t);
+    ObjectMonitor* monitor = ObjectSynchronizer::inflate(obj, t);
+
+    // TODO: 存在先行发生，如果重量级锁解锁时，该线程还在加入集合的过程中，就不会判断其状态，可能会漏掉唤醒
+    // 自旋，将膨胀到重量级锁的线程到objectMonitor
+    for (;;) {
+        if ((bool)(Atomic::cmpxchg_ptr((void*)true, (void *) &(monitor->_entryListLock), (void*)false)) == false) {
+            INFO_PRINT("[%s] 加入waiter set", t->_name.c_str());
+            ObjectWaiter* node = new ObjectWaiter(t);
+            if (monitor->_entryList == NULL) {
+                monitor->_entryList = node;
+            } else {
+                node->_next = monitor->_entryList;
+                monitor->_entryList->_prev = node;
+                monitor->_entryList = node;
+            }
+            monitor->_entryListLength++;
+            monitor->_entryListLock = false;
+            break;
+        } else {
+            INFO_PRINT("[%s] 加入waiter set失败", t->_name.c_str());
+
+        }
+        sleep(1);
+    }
+
+    monitor->enter(t);
 
 }
 
@@ -117,7 +142,7 @@ void ObjectSynchronizer::slow_exit(InstanceOopDesc *obj, BasicLock* lock, JavaTh
 
 // 膨胀成重量级锁，返回重量级锁
 // 膨胀的意思就是获取重量级锁对象（重量级锁实体对象ObjectMonitor）
-ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, bool exit) {
+ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t) {
     for (;;) {
         markOop mark = obj->mark();
         INFO_PRINT("[%s] 对象头 %X", t->_name.c_str(), mark);
@@ -127,31 +152,6 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
             INFO_PRINT("[%s] 对象头中已经是重量级锁", t->_name.c_str());
             // 获取重量级锁对象头中的重量级锁对象的指针
             ObjectMonitor* inf = mark->monitor();
-
-            // TODO: 存在先行发生，如果重量级锁解锁时，该线程还在加入集合的过程中，就不会判断其状态，可能会漏掉唤醒
-            if (!exit) {
-                // 自旋，将膨胀到重量级锁的线程到objectMonitor
-                for (;;) {
-                    if ((bool)(Atomic::cmpxchg_ptr((void*)true, (void *) &(inf->_entryListLock), (void*)false)) == false) {
-                        INFO_PRINT("[%s] 加入waiter set", t->_name.c_str());
-                        ObjectWaiter* node = new ObjectWaiter(t);
-                        if (inf->_entryList == NULL) {
-                            inf->_entryList = node;
-                        } else {
-                            node->_next = inf->_entryList;
-                            inf->_entryList->_prev = node;
-                            inf->_entryList = node;
-                        }
-                        inf->_entryListLength++;
-                        inf->_entryListLock = false;
-                        break;
-                    } else {
-                        INFO_PRINT("[%s] 加入waiter set失败", t->_name.c_str());
-
-                    }
-                    sleep(1);
-                }
-            }
 
             return inf;
         }
@@ -197,35 +197,6 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
             } else {
                 INFO_PRINT("[%s] 膨胀成重量级锁失败", t->_name.c_str());
                 continue;
-            }
-
-
-            INFO_PRINT("[%s] %d", t->_name.c_str(), m->_entryListLock);     // 0
-            if (!exit) {
-                // 自旋，将膨胀到重量级锁的线程到objectMonitor
-                for (;;) {
-                    bool b = (bool)(Atomic::cmpxchg_ptr((void*)true, (void *) &(m->_entryListLock), (void*)false));
-                    INFO_PRINT("[%s] b: %d", t->_name.c_str(), b);      // 1
-                    INFO_PRINT("[%s] lock: %d", t->_name.c_str(), m->_entryListLock);       // 0
-                    if (b == false) {
-                        INFO_PRINT("[%s] 加入waiter set", t->_name.c_str());
-                        ObjectWaiter* node = new ObjectWaiter(t);
-                        if (m->_entryList == NULL) {
-                            m->_entryList = node;
-                        } else {
-                            node->_next = m->_entryList;
-                            m->_entryList->_prev = node;
-                            m->_entryList = node;
-                        }
-                        m->_entryListLength++;
-                        m->_entryListLock = false;
-                        break;
-                    } else {
-                        INFO_PRINT("[%s] 加入waiter set失败", t->_name.c_str());
-
-                    }
-                    sleep(1);
-                }
             }
 
             return m;
