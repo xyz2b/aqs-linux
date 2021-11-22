@@ -129,7 +129,6 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
             ObjectMonitor* inf = mark->monitor();
 
             // TODO: 存在先行发生，如果重量级锁解锁时，该线程还在加入集合的过程中，就不会判断其状态，可能会漏掉唤醒
-            // TODO: 加入waiter set失败，cpmxchg不对，返回的原值不对
             if (!exit) {
                 // 自旋，将膨胀到重量级锁的线程到objectMonitor
                 for (;;) {
@@ -201,13 +200,13 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t, 
             }
 
 
-            INFO_PRINT("[%s] %d", t->_name.c_str(), m->_entryListLock);
+            INFO_PRINT("[%s] %d", t->_name.c_str(), m->_entryListLock);     // 0
             if (!exit) {
                 // 自旋，将膨胀到重量级锁的线程到objectMonitor
                 for (;;) {
                     bool b = (bool)(Atomic::cmpxchg_ptr((void*)true, (void *) &(m->_entryListLock), (void*)false));
-                    INFO_PRINT("[%s] b: %d", t->_name.c_str(), b);
-                    INFO_PRINT("[%s] lock: %d", t->_name.c_str(), m->_entryListLock);
+                    INFO_PRINT("[%s] b: %d", t->_name.c_str(), b);      // 1
+                    INFO_PRINT("[%s] lock: %d", t->_name.c_str(), m->_entryListLock);       // 0
                     if (b == false) {
                         INFO_PRINT("[%s] 加入waiter set", t->_name.c_str());
                         ObjectWaiter* node = new ObjectWaiter(t);

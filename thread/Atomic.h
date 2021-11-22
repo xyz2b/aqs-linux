@@ -5,6 +5,8 @@
 #ifndef LINUX_ATOMIC_H
 #define LINUX_ATOMIC_H
 
+#include "../include/common.h"
+
 class Atomic {
 public:
     /**
@@ -70,6 +72,7 @@ public:
      *      如果不相等，则直接返回*dest的值
      * */
     static long cmpxchg(long exchange_value, volatile long* dest, long compare_value) {
+        INFO_PRINT("exchange_value: %d, dest: %d, compare_value, %d", exchange_value, *dest, compare_value);
         __asm__ __volatile__ ("lock; cmpxchgq %1,(%3)"
         : "=a" (exchange_value)
         : "r" (exchange_value), "a" (compare_value), "r" (dest)
@@ -79,6 +82,7 @@ public:
     }
 
     static void* cmpxchg_ptr(void* exchange_value, void* dest, void* compare_value) {
+        // 这里是将dest的指针转成了long类型的指针，所以取值时，取得是long类型的值，如果本身dest是bool类型的指针，那这样取就会取多，取到其他的内存的值，可能和原来的值就不相同了，所以传入的dest需要是一个指向64位数据长度的指针
         return (void*)cmpxchg((long)exchange_value, (long*)dest, (long)compare_value);
     }
 };
