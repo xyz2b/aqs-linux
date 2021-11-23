@@ -109,7 +109,7 @@ void ObjectSynchronizer::slow_enter(InstanceOopDesc *obj, BasicLock* lock, JavaT
     // 膨胀成重量级锁
     ObjectMonitor* monitor = ObjectSynchronizer::inflate(obj, t);
 
-    // TODO: 存在先行发生，如果重量级锁解锁时，该线程还在加入集合的过程中，就不会判断其状态，可能会漏掉唤醒
+    // TODO: 存在先行发生，如果前一个获得重量级锁的线程解锁时，该线程还在加入集合的过程中，就不会判断其状态，可能会漏掉唤醒
     // 自旋，将膨胀到重量级锁的线程到objectMonitor
     for (;;) {
         if ((bool)(Atomic::cmpxchg_ptr((void*)true, (void *) &(monitor->_entryListLock), (void*)false)) == false) {
