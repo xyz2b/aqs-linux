@@ -39,6 +39,8 @@ void ObjectSynchronizer::fast_exit(InstanceOopDesc* obj, BasicLock* lock, JavaTh
 
     // 轻量级锁膨胀成重量级锁之后，mark就变了，抢到轻量级锁解锁时，就不会走这个逻辑
     // 轻量级锁 解锁时什么都不做，就是还让mark的值为轻量级锁，后面的线程都会膨胀成重量级锁
+    // 正常情况是，如果有线程触发膨胀成重量级锁，那么轻量级锁要进行处理，在安全点将其运行暂停，然后膨胀成重量级锁，再抢锁运行
+    // 而且如果已经有线程膨胀成重量级锁之后，抢到轻量级锁的线程就算解锁（不会走轻量级锁的解锁了，因为只要有膨胀成重量级锁，已有的轻量级锁也要膨胀），其他线程也只能膨胀成重量级锁，即不能回退
     if (mark == (markOop)lock && lock->owner() == t) {
 //        if ((markOop) Atomic::cmpxchg_ptr(lock, obj->mark_addr(), mark) == mark) {
             INFO_PRINT("[%s] 轻量级锁解锁成功", t->_name.c_str());
