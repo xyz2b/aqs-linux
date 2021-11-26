@@ -42,11 +42,11 @@ void ObjectSynchronizer::fast_exit(InstanceOopDesc* obj, BasicLock* lock, JavaTh
     // 正常情况是，如果有线程触发膨胀成重量级锁，那么轻量级锁要进行处理，在安全点将其运行暂停，然后膨胀成重量级锁，再抢锁运行
     // 而且如果已经有线程膨胀成重量级锁之后，抢到轻量级锁的线程就算解锁（不会走轻量级锁的解锁了，因为只要有膨胀成重量级锁，已有的轻量级锁也要膨胀），其他线程也只能膨胀成重量级锁，即不能回退
     if (mark == (markOop)lock && lock->owner() == t) {
-//        if ((markOop) Atomic::cmpxchg_ptr(lock, obj->mark_addr(), mark) == mark) {
+        if ((markOop) Atomic::cmpxchg_ptr(lock, obj->mark_addr(), mark) == mark) {
             INFO_PRINT("[%s] 轻量级锁解锁成功", t->_name.c_str());
 
             return;
-//        }
+        }
     }
 
     INFO_PRINT("[%s] 轻量级锁解锁失败，膨胀成重量级锁", t->_name.c_str());
@@ -65,7 +65,10 @@ void ObjectSynchronizer::slow_enter(InstanceOopDesc *obj, BasicLock* lock, JavaT
     markOop mark = obj->mark();
 
     // 只有无锁才能变成轻量级锁
-    // 如果已经膨胀成重量级锁了，之前轻量级锁的线程释放了轻量级锁，别的线程还能获取不到轻量级锁了，回退不了
+    // 如果在持有轻量级锁的线程释锁之前，还未有线程来抢锁，即还未膨胀，那么在其释放轻量级锁之后，别的线程还可以来抢轻量级，这个不需要特别做什么逻辑
+    //       1.因为轻量级锁在解锁时，会将加轻量级锁之前的对象头保存起来（无锁的对象头），然后解锁时再设置回来，如果没有膨胀，那么解锁完成之后，对象头是无锁，别的线程还可以加轻量级锁
+    //       2.在膨胀成重量级锁时，对象头会先被改为00中间状态，之后被改为重量级锁（即使重量级锁被释放也不会将对象头改回），所以别的线程再抢轻量级锁时，对象头不会是无锁状态，加不了轻量级锁，只有膨胀
+    // 如果已经膨胀成重量级锁了，之前轻量级锁的线程释放了轻量级锁，别的线程也获取不到轻量级锁了，回退不了
     if(mark->is_neutral()) {
         // 保存上一个锁状态的对象头，这里就是将无锁的对象头保存起来
         lock->set_displaced_header(mark);
