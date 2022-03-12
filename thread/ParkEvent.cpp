@@ -17,7 +17,7 @@ void ParkEvent::park(ThreadState thread_status) {
 
 void ParkEvent::unpark() {
     pthread_mutex_lock(_lock);
-    // pthread_cond_signal唤醒处于wait状态的线程
+    // pthread_cond_signal唤醒处于对应cond上的wait状态的线程
     pthread_cond_signal(_cond);
     pthread_mutex_unlock(_lock);
 }
