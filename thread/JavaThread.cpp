@@ -35,6 +35,8 @@ void JavaThread::run() {
     while (true) {
         if (_state == INITIALIZED) {
             INFO_PRINT("唤醒 [%s]", this->_name.c_str());
+            // 确保在上面wait之后，才执行signal，上面wait之前会加锁，这里signal前也会加锁，如果上面业务线程逻辑还未执行到wait，则这里获取不到锁，也不可能执行到signal逻辑
+            // 当上面业务线程逻辑执行到wait时，会先解锁再阻塞，上面wait解锁之后，这里就能获取到锁了，就能执行下面的signal逻辑了，此时也确保了上面的wait逻辑一定执行过了
             pthread_mutex_lock(_startThread_lock);
             pthread_cond_signal(_cond);
             pthread_mutex_unlock(_startThread_lock);
