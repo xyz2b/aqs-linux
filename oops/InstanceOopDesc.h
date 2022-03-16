@@ -9,6 +9,7 @@
 
 class InstanceOopDesc {
 public:
+    // 看成一个8字节的值
     markOop _mark;
 
     InstanceOopDesc();
