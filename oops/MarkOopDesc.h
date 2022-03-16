@@ -15,7 +15,12 @@ class MarkOopDesc {
 private:
     // Conversion
     uintptr_t value() const {
-        // 返回该对象头的位置，该对象的对象指针被用来存储uint64类型的数据，即可以把对象指针当成uint64整型值来用
+        // 返回该对象的this指针
+        // 该类虽然没有属性，创建出来的对象是个空对象，但是在C++的机制中，空对象也是会占用内存的，32位操作系统占用4字节，64位操作系统占用8字节
+        // HotSpot就用空对象所占用的内存来存储MarkWord(64位操作系统下也是8字节)
+        // 创建对象时使用这样的语法：MarkOopDesc* mark = MarkOopDesc(value);
+        // 这里创建对象的方式比较特殊，这样创建出来的对象，如果直接打印指向该对象的指针(mark)，打印出来的是创建对象时传入的值(value)
+        // 所以value方法返回的该对象的this指针，其对应的值其实是创建该对象时传入的值，而不是指向该对象的指针地址
         return (uintptr_t) this;
     }
 
@@ -384,6 +389,9 @@ public:
     // 无锁的MarkOop，初始化mark时用
     static markOop prototype() {
         // return 1
+        // 这里创建对象的方式比较特殊，这样创建出来的对象，如果直接打印指向该对象的指针，打印出来的是创建对象时传入的值，如这里的( no_hash_in_place | no_lock_in_place )
+        // 所以上面value方法返回的该对象的this指针，其对应的值其实是创建该对象时传入的值，而不是指向该对象的指针地址
+        // 正常创建对象时，直接打印指向该对象的指针，打印出来的是指针地址
         return markOop( no_hash_in_place | no_lock_in_place );
     }
 };
