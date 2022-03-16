@@ -18,9 +18,9 @@ private:
         // 返回该对象的this指针
         // 该类虽然没有属性，创建出来的对象是个空对象，但是在C++的机制中，空对象也是会占用内存的，32位操作系统占用4字节，64位操作系统占用8字节
         // HotSpot就用空对象所占用的内存来存储MarkWord(64位操作系统下也是8字节)
-        // 创建对象时使用这样的语法：MarkOopDesc* mark = MarkOopDesc(value);
+        // 创建对象时使用这样的语法：MarkOop mark = MarkOop(value);      // typedef MarkOopDesc* markOop;
         // 这里创建对象的方式比较特殊，这样创建出来的对象，如果直接打印指向该对象的指针(mark)，打印出来的是创建对象时传入的值(value)
-        // 所以value方法返回的该对象的this指针，其对应的值其实是创建该对象时传入的值，而不是指向该对象的指针地址
+        // 所以value方法返回的该对象的this指针，其对应的值其实是使用上面的语法创建该对象时传入的值，而不是指向该对象的指针地址
         return (uintptr_t) this;
     }
 
