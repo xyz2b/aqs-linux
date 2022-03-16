@@ -161,7 +161,7 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t) 
             return inf;
         }
 
-        // 2.目前对象头处于正在从轻量级锁膨胀成重量级锁的中间状态，即对象头为0，表示已经有线程触发膨胀了，还在膨胀的过程中，就需要等待这个线程的膨胀过程完成
+        // 2.目前对象头处于正在从轻量级锁膨胀成重量级锁的中间状态，即对象头为0（第一次膨胀时会将对象头置为0，作为一个膨胀的中间状态），表示已经有线程触发膨胀了，还在膨胀的过程中，就需要等待这个线程的膨胀过程完成
         // 只需要重试即可，判断对象头是否已经是重量级锁了，是就直接返回重量级锁对象
         if (mark == MarkOopDesc::INFLATING()) {
             INFO_PRINT("[%s] 检测到正在膨胀成重量级锁 %d，阻塞等待唤醒", t->_name.c_str(), mark->has_monitor());
@@ -172,7 +172,7 @@ ObjectMonitor *ObjectSynchronizer::inflate(InstanceOopDesc *obj, JavaThread *t) 
             continue;
         }
 
-        // 2.目前对象头中还是轻量级锁（还未膨胀过），需要膨胀成重量级锁，此时还没有重量级锁对象，需要创建
+        // 3.目前对象头中还是轻量级锁（还未膨胀过），需要膨胀成重量级锁，此时还没有重量级锁对象，需要创建
         if (mark->has_locker()) {
             ObjectMonitor* m = new ObjectMonitor;
 
