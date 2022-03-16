@@ -76,7 +76,7 @@ public:
         __asm__ __volatile__ ("lock; cmpxchgq %1,(%3)"
         : "=a" (exchange_value)
         : "r" (exchange_value), "a" (compare_value), "r" (dest)
-        : "cc", "memory");
+        : "cc", "memory");  // memory指的是直接从内存中取值，而不是读取寄存器中缓存的值
 
         return exchange_value;
     }
